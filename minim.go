@@ -1,16 +1,16 @@
 package main
 
 import (
+    "crypto/md5"
+    "errors"
+    "fmt"
+    "io"
+    "net/http"
     "os"
     "os/exec"
     "path/filepath"
-    "crypto/md5"
-    "io"
-    "fmt"
-    "net/http"
-    "strings"
     "strconv"
-    "errors"
+    "strings"
     "sync"
     // "io/ioutil"
 )
@@ -27,8 +27,8 @@ const (
 )
 
 var RegisteredOptions map[string]OptionRegistration
-var FileLocks         map[string]*sync.Mutex
-var FileLocksLock     sync.Mutex
+var FileLocks map[string]*sync.Mutex
+var FileLocksLock sync.Mutex
 
 var (
     HomePath      string
@@ -49,12 +49,12 @@ var (
 
 type FileSize struct {
     value float64
-    unit FileUnit
+    unit  FileUnit
 }
 
 type RequestOptions struct {
     setOpts map[Option]bool
-    fs FileSize
+    fs      FileSize
 }
 
 type Request struct {
@@ -64,7 +64,7 @@ type Request struct {
 }
 
 func (fs FileSize) String() string {
-    return fmt.Sprintf("%f%s", fs.value,fs.unit)
+    return fmt.Sprintf("%f%s", fs.value, fs.unit)
 }
 
 func init() {
@@ -110,19 +110,28 @@ func addOption(prefixes []string, or OptionRegistration) {
 // exists returns whether the given file or directory exists or not
 func exists(path string) (bool, error) {
     _, err := os.Stat(path)
-    if err == nil { return true, nil }
-    if os.IsNotExist(err) { return false, nil }
+    if err == nil {
+        return true, nil
+    }
+    if os.IsNotExist(err) {
+        return false, nil
+    }
     return true, err
 }
 
 func ParseFileUnit(unparsedFileUnit string) (*FileUnit, error) {
     var fu FileUnit
     switch strings.ToLower(unparsedFileUnit) {
-    case "b": fu = B
-    case "kb": fu = KB
-    case "mb": fu = MB
-    case "gb": fu = GB
-    default: fu = KB
+    case "b":
+        fu = B
+    case "kb":
+        fu = KB
+    case "mb":
+        fu = MB
+    case "gb":
+        fu = GB
+    default:
+        fu = KB
     }
     return &fu, nil
 }
@@ -187,7 +196,7 @@ func ParseRequestOptions(unparsedOptions []string) (*RequestOptions, error) {
 
 func ParseRequest(path string) (*Request, error) {
     urlSplit := strings.SplitN(path, "/u", 2)
-    var imgUrl  string
+    var imgUrl string
     var options []string
     if len(urlSplit) > 1 {
         imgUrl = urlSplit[1]
@@ -290,11 +299,11 @@ func Minify(req *Request) error {
     cmd := exec.Command(
         "convert",
         "-define",
-        "jpeg:extent=" + req.reqOpts.fs.String(),
+        "jpeg:extent="+req.reqOpts.fs.String(),
         filepath.Join(CacheOrigPath, req.imgId),
         filepath.Join(
             CacheRedPath,
-            req.imgId + "-" + req.reqOpts.fs.String() + ".jpg"))
+            req.imgId+"-"+req.reqOpts.fs.String()+".jpg"))
     return cmd.Run()
 }
 
@@ -319,10 +328,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
     }
 
     f, err := os.Open(filepath.Join(
-                CacheRedPath,
-                req.imgId + "-" + req.reqOpts.fs.String() + ".jpg"))
-
+        CacheRedPath,
+        req.imgId+"-"+req.reqOpts.fs.String()+".jpg"))
     defer f.Close()
+    if err != nil {
+        LogErr(w, err)
+        return
+    }
 
     _, err = io.Copy(w, f)
     if err != nil {
