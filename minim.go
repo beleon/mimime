@@ -69,6 +69,23 @@ func (fs FileSize) String() string {
     return fmt.Sprintf("%f%s", fs.value, fs.unit)
 }
 
+func (r *Request) GImgId() string {
+    if r.imgId == "" {
+        r.imgId = fmt.Sprintf("%x", md5.Sum([]byte(r.imgUrl)))
+    }
+    return r.imgId
+}
+
+func (r *Request) RedPath() string {
+    return filepath.Join(
+        CacheRedPath,
+        r.GImgId()+"-"+r.reqOpts.fs.String()+".jpg")
+}
+
+func (r *Request) OrigPath() string {
+    return filepath.Join(CacheOrigPath, r.GImgId())
+}
+
 func init() {
     HomePath = os.Getenv("HOME")
     CachePath = filepath.Join(HomePath, ".cache", Name)
@@ -207,12 +224,11 @@ func ParseRequest(path string) (*Request, error) {
         imgUrl = urlSplit[0][1:]
         options = []string{""}
     }
-    imgId := fmt.Sprintf("%x", md5.Sum([]byte(imgUrl)))
     reqOpts, err := ParseRequestOptions(options[1:])
     if err != nil {
         return nil, err
     }
-    return &Request{imgUrl, imgId, *reqOpts}, nil
+    return &Request{imgUrl, "", *reqOpts}, nil
 }
 
 func LogRequest(req *Request) {
@@ -263,9 +279,9 @@ func WriteRequestResponse(req *Request, path string) error {
 }
 
 func CreateOriginalFile(req *Request) error {
-    path := filepath.Join(CacheOrigPath, req.imgId)
-    CoLock(req.imgId)
-    defer CoUnlock(req.imgId)
+    path := filepath.Join(CacheOrigPath, req.GImgId())
+    CoLock(req.GImgId())
+    defer CoUnlock(req.GImgId())
 
     if !req.reqOpts.setOpts[ForceReloadOption] {
         ex, err := exists(path)
@@ -302,10 +318,8 @@ func Minify(req *Request) error {
         "convert",
         "-define",
         "jpeg:extent="+req.reqOpts.fs.String(),
-        filepath.Join(CacheOrigPath, req.imgId),
-        filepath.Join(
-            CacheRedPath,
-            req.imgId+"-"+req.reqOpts.fs.String()+".jpg"))
+        req.OrigPath(),
+        req.RedPath())
     return cmd.Run()
 }
 
@@ -329,9 +343,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    f, err := os.Open(filepath.Join(
-        CacheRedPath,
-        req.imgId+"-"+req.reqOpts.fs.String()+".jpg"))
+    f, err := os.Open(req.RedPath())
     defer f.Close()
     if err != nil {
         LogErr(w, err)
