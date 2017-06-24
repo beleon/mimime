@@ -30,6 +30,8 @@ var RegisteredOptions map[string]OptionRegistration
 var FileLocks map[string]*sync.Mutex
 var FileLocksLock sync.Mutex
 
+const Name string = "mimime"
+
 var (
     HomePath      string
     CachePath     string
@@ -69,7 +71,7 @@ func (fs FileSize) String() string {
 
 func init() {
     HomePath = os.Getenv("HOME")
-    CachePath = filepath.Join(HomePath, ".cache", "minim")
+    CachePath = filepath.Join(HomePath, ".cache", Name)
     CacheOrigPath = filepath.Join(CachePath, "orig")
     CacheRedPath = filepath.Join(CachePath, "red")
 
