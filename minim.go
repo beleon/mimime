@@ -43,6 +43,7 @@ const (
     FileSizeOption    Option = iota
     SslOption         Option = iota
     ForceReloadOption Option = iota
+    GrayScaleOption   Option = iota
 )
 
 var (
@@ -114,6 +115,7 @@ func init() {
     addOption([]string{"s", "-size", "-filesize"}, RegisterFileSizeOption)
     addOption([]string{"p", "-ssl"}, GenToggleOptionRegistration(SslOption))
     addOption([]string{"f", "-force"}, GenToggleOptionRegistration(ForceReloadOption))
+    addOption([]string{"g", "-gray"}, GenToggleOptionRegistration(GrayScaleOption))
 }
 
 func LogErr(w io.Writer, err error) {
@@ -314,12 +316,21 @@ func CoUnlock(key string) {
 }
 
 func Minify(req *Request) error {
-    cmd := exec.Command(
-        "convert",
-        "-define",
-        "jpeg:extent="+req.reqOpts.fs.String(),
-        req.OrigPath(),
-        req.RedPath())
+    fn := "convert"
+    args := []string{}
+    for key, value := range req.reqOpts.setOpts {
+        if value {
+            switch key {
+            case FileSizeOption:
+                args = append(args, "-define", "jpeg:extent="+req.reqOpts.fs.String())
+            case GrayScaleOption:
+                args = append(args, "-colorspace", "Gray")
+            }
+        }
+    }
+    args = append(args, req.OrigPath())
+    args = append(args, req.RedPath())
+    cmd := exec.Command(fn, args...)
     return cmd.Run()
 }
 
