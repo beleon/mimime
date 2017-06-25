@@ -1,2 +1,2 @@
 # mimime
-A meme minimization as a service.
+Meme minimization as a service.
