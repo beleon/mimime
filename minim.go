@@ -44,6 +44,7 @@ const (
     SslOption         Option = iota
     ForceReloadOption Option = iota
     GrayScaleOption   Option = iota
+    QualityOption     Option = iota
 )
 
 var (
@@ -58,6 +59,7 @@ type FileSize struct {
 type RequestOptions struct {
     setOpts map[Option]bool
     fs      FileSize
+    qual    float64
 }
 
 type Request struct {
@@ -116,6 +118,7 @@ func init() {
     addOption([]string{"p", "-ssl"}, GenToggleOptionRegistration(SslOption))
     addOption([]string{"f", "-force"}, GenToggleOptionRegistration(ForceReloadOption))
     addOption([]string{"g", "-gray"}, GenToggleOptionRegistration(GrayScaleOption))
+    addOption([]string{"q", "-quality"}, RegisterQualityOption)
 }
 
 func LogErr(w io.Writer, err error) {
@@ -176,6 +179,16 @@ func ParseFileSize(unparsedFileSize string) (*FileSize, error) {
     return &FileSize{size, *fu}, nil
 }
 
+func RegisterQualityOption(r *RequestOptions, arg string) error {
+    quality, err := strconv.ParseFloat(arg, 64)
+    if err != nil {
+        return err
+    }
+    r.setOpts[QualityOption] = true
+    r.qual = quality
+    return nil
+}
+
 func RegisterFileSizeOption(r *RequestOptions, arg string) error {
     fs, err := ParseFileSize(arg)
     if err != nil {
@@ -205,7 +218,7 @@ func RegisterOption(ro *RequestOptions, arg string) error {
 
 func ParseRequestOptions(unparsedOptions []string) (*RequestOptions, error) {
     setOpts := make(map[Option]bool)
-    ro := &RequestOptions{setOpts, DefaultFileSize}
+    ro := &RequestOptions{setOpts: setOpts}
     for _, el := range unparsedOptions {
         err := RegisterOption(ro, el)
         if err != nil {
@@ -325,6 +338,8 @@ func Minify(req *Request) error {
                 args = append(args, "-define", "jpeg:extent="+req.reqOpts.fs.String())
             case GrayScaleOption:
                 args = append(args, "-colorspace", "Gray")
+            case QualityOption:
+                args = append(args, "-quality", fmt.Sprintf("%.6f%%", req.reqOpts.qual))
             }
         }
     }
