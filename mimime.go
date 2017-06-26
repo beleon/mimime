@@ -17,6 +17,9 @@ import (
 
 type FileUnit string
 type Option int
+type ResizeFlag int
+type SizeConstructionState int
+type SizeConstructionInput int
 type OptionRegistration (func(r *RequestOptions, arg string) error)
 
 const (
@@ -45,6 +48,31 @@ const (
     ForceReloadOption Option = iota
     GrayScaleOption   Option = iota
     QualityOption     Option = iota
+    ResizeOption      Option = iota
+)
+
+const (
+    RFLeft  ResizeFlag = iota
+    RFRight ResizeFlag = iota
+    RFBoth  ResizeFlag = iota
+    RFPerc  ResizeFlag = iota
+)
+
+const (
+    StartState SizeConstructionState = iota
+    LeftParseState SizeConstructionState = iota
+    NoLeftParseState SizeConstructionState = iota
+    LeftOnlyParseState SizeConstructionState = iota
+    RightOnlyParseState SizeConstructionState = iota
+    BothParseState SizeConstructionState = iota
+    ErrorState SizeConstructionState = iota
+)
+
+const (
+    LeftParseInput SizeConstructionInput = iota
+    NoLeftParseInput SizeConstructionInput = iota
+    RightParseInput SizeConstructionInput = iota
+    NoRightParseInput SizeConstructionInput = iota
 )
 
 var (
@@ -56,10 +84,18 @@ type FileSize struct {
     unit  FileUnit
 }
 
+type ImgSize struct {
+    rf     ResizeFlag
+    width  int64
+    height int64
+    perc   float64
+}
+
 type RequestOptions struct {
     setOpts map[Option]bool
     fs      FileSize
     qual    float64
+    re      ImgSize
 }
 
 type Request struct {
@@ -77,6 +113,43 @@ func (r *Request) GImgId() string {
         r.imgId = fmt.Sprintf("%x", md5.Sum([]byte(r.imgUrl)))
     }
     return r.imgId
+}
+
+func (s *SizeConstructionState) Advance(sci SizeConstructionInput) SizeConstructionState {
+    switch *s {
+    case StartState:
+        switch sci {
+            case LeftParseInput:
+                return LeftParseState
+            case NoLeftParseInput:
+                return NoLeftParseState
+        }
+    case LeftParseState:
+        switch sci {
+            case RightParseInput:
+                return BothParseState
+            case NoRightParseInput:
+                return LeftOnlyParseState
+        }
+    case NoLeftParseState:
+        switch sci {
+            case RightParseInput:
+                return RightOnlyParseState
+        }
+    }
+    return ErrorState
+}
+
+func (s *SizeConstructionState) ResizeFlag() (ResizeFlag, error) {
+    switch *s {
+    case LeftOnlyParseState:
+        return RFLeft, nil
+    case RightOnlyParseState:
+        return RFRight, nil
+    case BothParseState:
+        return RFBoth, nil
+    }
+    return -1, errors.New("Invalid size option given.")
 }
 
 func (r *Request) RedPath() string {
@@ -119,6 +192,7 @@ func init() {
     addOption([]string{"f", "-force"}, GenToggleOptionRegistration(ForceReloadOption))
     addOption([]string{"g", "-gray"}, GenToggleOptionRegistration(GrayScaleOption))
     addOption([]string{"q", "-quality"}, RegisterQualityOption)
+    addOption([]string{"r", "-resize"}, RegisterResizeOption)
 }
 
 func LogErr(w io.Writer, err error) {
@@ -189,6 +263,53 @@ func RegisterQualityOption(r *RequestOptions, arg string) error {
     return nil
 }
 
+func RegisterResizeOption(r *RequestOptions, arg string) error {
+    if strings.Contains(arg, "x") {
+        sizes := strings.Split(arg, "x")
+        if len(sizes) != 2 {
+            return errors.New(fmt.Sprintf("Invalid amount of size parameters: %s", arg))
+        }
+        var width  int64
+        var height int64
+        var err    error
+        parseState := StartState
+
+        if sizes[0] == "" {
+            parseState = parseState.Advance(NoLeftParseInput)
+        } else {
+            width, err = strconv.ParseInt(sizes[0], 10, 64)
+            if err != nil {
+                return err
+            }
+            parseState = parseState.Advance(LeftParseInput)
+        }
+
+        if sizes[1] == "" {
+            parseState = parseState.Advance(NoRightParseInput)
+        } else {
+            height, err = strconv.ParseInt(sizes[1], 10, 64)
+            if err != nil {
+                return err
+            }
+            parseState = parseState.Advance(RightParseInput)
+        }
+        flag, err := parseState.ResizeFlag()
+        if err != nil {
+            return err
+        }
+        r.setOpts[ResizeOption] = true
+        r.re = ImgSize{rf: flag, width: width, height: height}
+        return nil
+    }
+    perc, err := strconv.ParseFloat(arg, 64)
+    if err != nil {
+        return err
+    }
+    r.setOpts[ResizeOption] = true
+    r.re = ImgSize{rf: RFPerc, perc: perc}
+    return nil
+}
+
 func RegisterFileSizeOption(r *RequestOptions, arg string) error {
     fs, err := ParseFileSize(arg)
     if err != nil {
@@ -228,20 +349,41 @@ func ParseRequestOptions(unparsedOptions []string) (*RequestOptions, error) {
     return ro, nil
 }
 
+func ParseUrl(unparsedUrl string) (string, bool, error) {
+    if strings.HasPrefix(unparsedUrl, "http:/") {
+        return unparsedUrl[6:], false, nil
+    }
+    if strings.HasPrefix(unparsedUrl, "https:/") {
+        return unparsedUrl[7:], true, nil
+    }
+    return unparsedUrl, false, nil
+}
+
 func ParseRequest(path string) (*Request, error) {
     urlSplit := strings.SplitN(path, "/u", 2)
     var imgUrl string
     var options []string
+    var sslFlag bool
+    var err error
     if len(urlSplit) > 1 {
-        imgUrl = urlSplit[1]
+        imgUrl, sslFlag, err = ParseUrl(urlSplit[1])
+        if err != nil {
+            return nil, err
+        }
         options = strings.Split(urlSplit[0], "/")
     } else {
-        imgUrl = urlSplit[0][1:]
+        imgUrl, sslFlag, err = ParseUrl(urlSplit[0][1:])
+        if err != nil {
+            return nil, err
+        }
         options = []string{""}
     }
     reqOpts, err := ParseRequestOptions(options[1:])
     if err != nil {
         return nil, err
+    }
+    if sslFlag {
+        reqOpts.setOpts[SslOption] = true;
     }
     return &Request{imgUrl, "", *reqOpts}, nil
 }
@@ -339,7 +481,30 @@ func Minify(req *Request) error {
             case GrayScaleOption:
                 args = append(args, "-colorspace", "Gray")
             case QualityOption:
-                args = append(args, "-quality", fmt.Sprintf("%.6f%%", req.reqOpts.qual))
+                args = append(
+                    args,
+                    "-quality",
+                    fmt.Sprintf("%.6f%%", req.reqOpts.qual))
+            case ResizeOption:
+                re := req.reqOpts.re
+                switch re.rf {
+                case RFLeft:
+                    args = append(args, "-resize", fmt.Sprintf("%dx", re.width))
+                case RFRight:
+                    args = append(args, "-resize", fmt.Sprintf("x%d", re.height))
+                case RFBoth:
+                    args = append(
+                        args,
+                        "-resize",
+                        fmt.Sprintf("%dx%d", re.width, re.height))
+                case RFPerc:
+                    args = append(
+                        args,
+                        "-resize",
+                        fmt.Sprintf("%.6f%%", re.perc))
+                default:
+                    return errors.New("Invalid resize flag.")
+                }
             }
         }
     }
@@ -362,6 +527,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
         LogErr(w, err)
         return
     }
+
+    /*
+    * <- gather info
+    */
 
     err = Minify(req)
     if err != nil {
