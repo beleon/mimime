@@ -39,7 +39,6 @@ var (
     HomePath      string
     CachePath     string
     CacheOrigPath string
-    CacheRedPath  string
 )
 
 const (
@@ -152,12 +151,6 @@ func (s *SizeConstructionState) ResizeFlag() (ResizeFlag, error) {
     return -1, errors.New("Invalid size option given.")
 }
 
-func (r *Request) RedPath() string {
-    return filepath.Join(
-        CacheRedPath,
-        r.GImgId()+"-"+r.reqOpts.fs.String()+".jpg")
-}
-
 func (r *Request) OrigPath() string {
     return filepath.Join(CacheOrigPath, r.GImgId())
 }
@@ -166,7 +159,6 @@ func init() {
     HomePath = os.Getenv("HOME")
     CachePath = filepath.Join(HomePath, ".cache", Name)
     CacheOrigPath = filepath.Join(CachePath, "orig")
-    CacheRedPath = filepath.Join(CachePath, "red")
 
     err := os.MkdirAll(HomePath, os.ModePerm)
     if err != nil {
@@ -177,10 +169,6 @@ func init() {
         fmt.Println(err)
     }
     err = os.MkdirAll(CacheOrigPath, os.ModePerm)
-    if err != nil {
-        fmt.Println(err)
-    }
-    err = os.MkdirAll(CacheRedPath, os.ModePerm)
     if err != nil {
         fmt.Println(err)
     }
@@ -470,7 +458,7 @@ func CoUnlock(key string) {
     FileLocksLock.Unlock()
 }
 
-func Minify(req *Request) error {
+func Minify(req *Request) (*exec.Cmd, error) {
     fn := "convert"
     args := []string{}
     for key, value := range req.reqOpts.setOpts {
@@ -503,15 +491,14 @@ func Minify(req *Request) error {
                         "-resize",
                         fmt.Sprintf("%.6f%%", re.perc))
                 default:
-                    return errors.New("Invalid resize flag.")
+                    return nil, errors.New("Invalid resize flag.")
                 }
             }
         }
     }
     args = append(args, req.OrigPath())
-    args = append(args, req.RedPath())
-    cmd := exec.Command(fn, args...)
-    return cmd.Run()
+    args = append(args, "jpeg:-")
+    return exec.Command(fn, args...), nil
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -532,24 +519,31 @@ func handler(w http.ResponseWriter, r *http.Request) {
     * <- gather info
     */
 
-    err = Minify(req)
+    cmd, err := Minify(req)
     if err != nil {
         LogErr(w, err)
         return
     }
 
-    f, err := os.Open(req.RedPath())
-    defer f.Close()
+    stdoutPipe, err := cmd.StdoutPipe()
     if err != nil {
         LogErr(w, err)
         return
     }
 
-    _, err = io.Copy(w, f)
+    err = cmd.Start()
     if err != nil {
         LogErr(w, err)
         return
     }
+
+
+    _, err = io.Copy(w, stdoutPipe)
+    if err != nil {
+        LogErr(w, err)
+        return
+    }
+    cmd.Wait()
 }
 
 func main() {
