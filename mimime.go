@@ -1,4 +1,4 @@
-package main
+package mimime
 
 import (
     "crypto/md5"
@@ -12,7 +12,6 @@ import (
     "strconv"
     "strings"
     "sync"
-    // "io/ioutil"
 )
 
 type FileUnit string
@@ -546,7 +545,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
     cmd.Wait()
 }
 
-func main() {
+func RunServer() {
     http.HandleFunc("/", handler)
     http.ListenAndServe(":8080", nil)
 }
