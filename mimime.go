@@ -12,13 +12,12 @@ import (
     "strconv"
     "strings"
     "sync"
+    "github.com/sellleon/mimime/fsm"
 )
 
 type FileUnit string
 type Option int
 type ResizeFlag int
-type SizeConstructionState int
-type SizeConstructionInput int
 type OptionRegistration (func(r *RequestOptions, arg string) error)
 
 const (
@@ -57,21 +56,23 @@ const (
 )
 
 const (
-    StartState SizeConstructionState = iota
-    LeftParseState SizeConstructionState = iota
-    NoLeftParseState SizeConstructionState = iota
-    LeftOnlyParseState SizeConstructionState = iota
-    RightOnlyParseState SizeConstructionState = iota
-    BothParseState SizeConstructionState = iota
-    ErrorState SizeConstructionState = iota
+    StartState fsm.FsmState = iota
+    LeftParseState fsm.FsmState = iota
+    NoLeftParseState fsm.FsmState = iota
+    LeftOnlyParseState fsm.FsmState = iota
+    RightOnlyParseState fsm.FsmState = iota
+    BothParseState fsm.FsmState = iota
 )
 
 const (
-    LeftParseInput SizeConstructionInput = iota
-    NoLeftParseInput SizeConstructionInput = iota
-    RightParseInput SizeConstructionInput = iota
-    NoRightParseInput SizeConstructionInput = iota
+    LeftParseInput fsm.FsmInput = iota
+    NoLeftParseInput fsm.FsmInput = iota
+    RightParseInput fsm.FsmInput = iota
+    NoRightParseInput fsm.FsmInput = iota
 )
+
+var ParseTransitions fsm.FsmTrans
+var AcceptingParseStates []fsm.FsmState
 
 var (
     DefaultFileSize FileSize = FileSize{50, KB}
@@ -113,33 +114,8 @@ func (r *Request) GImgId() string {
     return r.imgId
 }
 
-func (s *SizeConstructionState) Advance(sci SizeConstructionInput) SizeConstructionState {
-    switch *s {
-    case StartState:
-        switch sci {
-            case LeftParseInput:
-                return LeftParseState
-            case NoLeftParseInput:
-                return NoLeftParseState
-        }
-    case LeftParseState:
-        switch sci {
-            case RightParseInput:
-                return BothParseState
-            case NoRightParseInput:
-                return LeftOnlyParseState
-        }
-    case NoLeftParseState:
-        switch sci {
-            case RightParseInput:
-                return RightOnlyParseState
-        }
-    }
-    return ErrorState
-}
-
-func (s *SizeConstructionState) ResizeFlag() (ResizeFlag, error) {
-    switch *s {
+func ResizeFlagFromState(s fsm.FsmState) (ResizeFlag, error) {
+    switch s {
     case LeftOnlyParseState:
         return RFLeft, nil
     case RightOnlyParseState:
@@ -171,6 +147,24 @@ func init() {
     if err != nil {
         fmt.Println(err)
     }
+
+    startStateTrans := make(map[fsm.FsmInput]fsm.FsmState)
+    startStateTrans[LeftParseInput] = LeftParseState
+    startStateTrans[NoLeftParseInput] = NoLeftParseState
+    leftParseStateTrans := make(map[fsm.FsmInput]fsm.FsmState)
+    leftParseStateTrans[RightParseInput] = BothParseState
+    leftParseStateTrans[NoRightParseInput] = LeftOnlyParseState
+    noLeftParseStateTrans := make(map[fsm.FsmInput]fsm.FsmState)
+    noLeftParseStateTrans[RightParseInput] = RightOnlyParseState
+    ParseTransitions = make(fsm.FsmTrans)
+    ParseTransitions[StartState] = startStateTrans
+    ParseTransitions[LeftParseState] = leftParseStateTrans
+    ParseTransitions[NoLeftParseState] = noLeftParseStateTrans
+
+    AcceptingParseStates = []fsm.FsmState{
+                                LeftOnlyParseState,
+                                RightOnlyParseState,
+                                BothParseState}
 
     RegisteredOptions = make(map[string]OptionRegistration)
     FileLocks = make(map[string]*sync.Mutex)
@@ -259,28 +253,35 @@ func RegisterResizeOption(r *RequestOptions, arg string) error {
         var width  int64
         var height int64
         var err    error
-        parseState := StartState
+
+        parseFsm := fsm.Initialize(ParseTransitions, StartState, AcceptingParseStates)
 
         if sizes[0] == "" {
-            parseState = parseState.Advance(NoLeftParseInput)
+            parseFsm.Advance(NoLeftParseInput)
         } else {
             width, err = strconv.ParseInt(sizes[0], 10, 64)
             if err != nil {
                 return err
             }
-            parseState = parseState.Advance(LeftParseInput)
+            parseFsm.Advance(LeftParseInput)
         }
 
         if sizes[1] == "" {
-            parseState = parseState.Advance(NoRightParseInput)
+            parseFsm.Advance(NoRightParseInput)
         } else {
             height, err = strconv.ParseInt(sizes[1], 10, 64)
             if err != nil {
                 return err
             }
-            parseState = parseState.Advance(RightParseInput)
+            parseFsm.Advance(RightParseInput)
         }
-        flag, err := parseState.ResizeFlag()
+
+        finalState, err := parseFsm.Finalize()
+        if err != nil {
+            return errors.New("Invalid size option given.")
+        }
+
+        flag, err := ResizeFlagFromState(finalState)
         if err != nil {
             return err
         }
