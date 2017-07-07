@@ -337,41 +337,42 @@ func ParseRequestOptions(unparsedOptions []string) (*RequestOptions, error) {
     return ro, nil
 }
 
-func ParseUrl(unparsedUrl string) (string, bool, error) {
+func ParseUrl(unparsedUrl string) (parsedUrl string, ssl bool, err error) {
+    parsedUrl = unparsedUrl
     if strings.HasPrefix(unparsedUrl, "http:/") {
-        return unparsedUrl[6:], false, nil
+        parsedUrl = unparsedUrl[6:]
+    } else if strings.HasPrefix(unparsedUrl, "https:/") {
+        parsedUrl = unparsedUrl[7:]
+        ssl = true
     }
-    if strings.HasPrefix(unparsedUrl, "https:/") {
-        return unparsedUrl[7:], true, nil
-    }
-    return unparsedUrl, false, nil
+    return
 }
 
 func ParseRequest(path string) (*Request, error) {
     urlSplit := strings.SplitN(path, "/u", 2)
-    var imgUrl string
+    var unparsedImgUrl string
     var options []string
     var sslFlag bool
     var err error
     if len(urlSplit) > 1 {
-        imgUrl, sslFlag, err = ParseUrl(urlSplit[1])
-        if err != nil {
-            return nil, err
-        }
+        unparsedImgUrl = urlSplit[1]
         options = strings.Split(urlSplit[0], "/")
     } else {
-        imgUrl, sslFlag, err = ParseUrl(urlSplit[0][1:])
-        if err != nil {
-            return nil, err
-        }
+        unparsedImgUrl = urlSplit[0][1:]
         options = []string{""}
     }
+
+    imgUrl, sslFlag, err := ParseUrl(unparsedImgUrl)
+    if err != nil {
+        return nil, err
+    }
+
     reqOpts, err := ParseRequestOptions(options[1:])
     if err != nil {
         return nil, err
     }
     if sslFlag {
-        reqOpts.setOpts[SslOption] = true;
+        reqOpts.setOpts[SslOption] = true
     }
     return &Request{imgUrl, "", *reqOpts}, nil
 }
