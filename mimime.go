@@ -7,6 +7,7 @@ import (
 
 const applicationName string = "mimime"
 
+//todo: export handler instead. make handler work for non "/" prefixes
 func RunServer() {
 	http.HandleFunc("/", handler)
 	http.ListenAndServe(":8080", nil)
