@@ -24,16 +24,15 @@ var registeredOptions map[string]optionRegistration
 
 func init() {
 	registeredOptions = make(map[string]optionRegistration)
-	addOption([]string{"s", "-size", "-filesize"}, registerFileSizeOption)
-	addOption([]string{"p", "-ssl"}, genToggleOptionRegistration(sslOption))
-	addOption([]string{"f", "-force"}, genToggleOptionRegistration(forceReloadOption))
-	addOption([]string{"g", "-gray"}, genToggleOptionRegistration(grayScaleOption))
-	addOption([]string{"q", "-quality"}, registerQualityOption)
-	addOption([]string{"r", "-resize"}, registerResizeOption)
+	addOption(registerFileSizeOption, "s", "-size", "-filesize")
+	addOption(genToggleOptionRegistration(sslOption), "p", "-ssl")
+	addOption(genToggleOptionRegistration(forceReloadOption), "f", "-force")
+	addOption(genToggleOptionRegistration(grayScaleOption), "g", "-gray")
+	addOption(registerQualityOption, "q", "-quality")
+	addOption(registerResizeOption, "r", "-resize")
 }
 
-//todo: make ...prefixes
-func addOption(prefixes []string, or optionRegistration) {
+func addOption(or optionRegistration, prefixes ...string, ) {
 	for _, el := range prefixes {
 		registeredOptions[el] = or
 	}
