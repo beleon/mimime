@@ -31,7 +31,7 @@ type Fsm struct {
  *
  * Using the Builder is typically easier to construct a new FSM.
  */
-func NewFsm(transitions TransitionMap, initial State, accepting []State) *Fsm {
+func NewFsm(transitions TransitionMap, initial State, accepting ...State) *Fsm {
 	return &Fsm{transitions,initial,accepting,initial,true}
 }
 
@@ -98,5 +98,5 @@ func (b *Builder) BindTransitions(from State, transitions ...Transition) *Builde
 }
 
 func (b *Builder) Build() *Fsm {
-	return NewFsm(b.transitions, b.initial, b.accepting)
+	return NewFsm(b.transitions, b.initial, b.accepting...)
 }
