@@ -35,7 +35,7 @@ func NewFsm(transitions TransitionMap, initial State, accepting []State) *Fsm {
 	return &Fsm{transitions,initial,accepting,initial,true}
 }
 
-func NewBuilder(initial State, accepting []State) *Builder {
+func NewBuilder(initial State, accepting ...State) *Builder {
 	return &Builder{make(TransitionMap), initial, accepting}
 }
 

@@ -21,10 +21,8 @@ const (
 	noRightParseInput fsm.Input = iota
 )
 
-var acceptingParseStates []fsm.State = []fsm.State{leftOnlyParseState, rightOnlyParseState, bothParseState}
-
 func newResizeFsm() *fsm.Fsm {
-	return fsm.NewBuilder(startState, acceptingParseStates).
+	return fsm.NewBuilder(startState, leftOnlyParseState, rightOnlyParseState, bothParseState).
 		BindTransitions(
 			startState,
 			fsm.Transition{leftParseInput, leftParseState},
