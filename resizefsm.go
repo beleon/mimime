@@ -6,45 +6,40 @@ import (
 )
 
 const (
-	startState          fsm.FsmState = iota
-	leftParseState      fsm.FsmState = iota
-	noLeftParseState    fsm.FsmState = iota
-	leftOnlyParseState  fsm.FsmState = iota
-	rightOnlyParseState fsm.FsmState = iota
-	bothParseState      fsm.FsmState = iota
+	startState          fsm.State = iota
+	leftParseState      fsm.State = iota
+	noLeftParseState    fsm.State = iota
+	leftOnlyParseState  fsm.State = iota
+	rightOnlyParseState fsm.State = iota
+	bothParseState      fsm.State = iota
 )
 
 const (
-	leftParseInput    fsm.FsmInput = iota
-	noLeftParseInput  fsm.FsmInput = iota
-	rightParseInput   fsm.FsmInput = iota
-	noRightParseInput fsm.FsmInput = iota
+	leftParseInput    fsm.Input = iota
+	noLeftParseInput  fsm.Input = iota
+	rightParseInput   fsm.Input = iota
+	noRightParseInput fsm.Input = iota
 )
 
-var parseTransitions fsm.FsmTrans
-var acceptingParseStates []fsm.FsmState
+var acceptingParseStates []fsm.State = []fsm.State{leftOnlyParseState, rightOnlyParseState, bothParseState}
 
-func init() {
-	startStateTrans := make(map[fsm.FsmInput]fsm.FsmState)
-	startStateTrans[leftParseInput] = leftParseState
-	startStateTrans[noLeftParseInput] = noLeftParseState
-	leftParseStateTrans := make(map[fsm.FsmInput]fsm.FsmState)
-	leftParseStateTrans[rightParseInput] = bothParseState
-	leftParseStateTrans[noRightParseInput] = leftOnlyParseState
-	noLeftParseStateTrans := make(map[fsm.FsmInput]fsm.FsmState)
-	noLeftParseStateTrans[rightParseInput] = rightOnlyParseState
-	parseTransitions = make(fsm.FsmTrans)
-	parseTransitions[startState] = startStateTrans
-	parseTransitions[leftParseState] = leftParseStateTrans
-	parseTransitions[noLeftParseState] = noLeftParseStateTrans
-
-	acceptingParseStates = []fsm.FsmState{
-		leftOnlyParseState,
-		rightOnlyParseState,
-		bothParseState}
+func newResizeFsm() *fsm.Fsm {
+	return fsm.NewBuilder(startState, acceptingParseStates).
+		BindTransitions(
+			startState,
+			fsm.Transition{leftParseInput, leftParseState},
+			fsm.Transition{noLeftParseInput, noLeftParseState}).
+		BindTransitions(
+			leftParseState,
+			fsm.Transition{rightParseInput, bothParseState},
+			fsm.Transition{noRightParseInput, leftOnlyParseState}).
+		BindTransitions(
+			noLeftParseState,
+			fsm.Transition{rightParseInput, rightOnlyParseState}).
+		Build()
 }
 
-func resizeFlagFromState(s fsm.FsmState) (resizeFlag, error) {
+func resizeFlagFromState(s fsm.State) (resizeFlag, error) {
 	switch s {
 	case leftOnlyParseState:
 		return rFLeft, nil

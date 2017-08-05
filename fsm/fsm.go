@@ -2,20 +2,44 @@ package fsm
 
 import "errors"
 
-type FsmState int
-type FsmInput int
+type State int
+type Input int
 
-type FsmTrans map[FsmState](map[FsmInput]FsmState)
+type Transition struct {
+	Input Input
+	Target State
+}
 
-type fsm struct {
-	transitions FsmTrans
-	initial     FsmState
-	accepting   []FsmState
-	current     FsmState
+type TransitionFn map[Input]State
+type TransitionMap map[State](TransitionFn)
+
+type Builder struct {
+	transitions TransitionMap
+	initial     State
+	accepting   []State
+}
+
+type Fsm struct {
+	transitions TransitionMap
+	initial     State
+	accepting   []State
+	current     State
 	validState  bool
 }
 
-func (fsm *fsm) Advance(in FsmInput) {
+/*
+ *
+ * Using the Builder is typically easier to construct a new FSM.
+ */
+func NewFsm(transitions TransitionMap, initial State, accepting []State) *Fsm {
+	return &Fsm{transitions,initial,accepting,initial,true}
+}
+
+func NewBuilder(initial State, accepting []State) *Builder {
+	return &Builder{make(TransitionMap), initial, accepting}
+}
+
+func (fsm *Fsm) Advance(in Input) {
 	if !fsm.validState {
 		return
 	}
@@ -32,7 +56,7 @@ func (fsm *fsm) Advance(in FsmInput) {
 	fsm.validState = false
 }
 
-func (fsm *fsm) IsAccepting() bool {
+func (fsm *Fsm) IsAccepting() bool {
 	if !fsm.validState {
 		return false
 	}
@@ -46,7 +70,7 @@ func (fsm *fsm) IsAccepting() bool {
 	return false
 }
 
-func (fsm *fsm) Finalize() (state FsmState, err error) {
+func (fsm *Fsm) Finalize() (state State, err error) {
 	state = fsm.current
 
 	if !fsm.validState {
@@ -60,8 +84,19 @@ func (fsm *fsm) Finalize() (state FsmState, err error) {
 	return
 }
 
-func Initialize(transitions FsmTrans, initial FsmState, accepting []FsmState) fsm {
-	return fsm{transitions, initial, accepting, initial, true}
+func (fsm *Fsm) InErrorState() bool {
+	return !fsm.validState
 }
 
-//todo: add builder
+func (b *Builder) BindTransitions(from State, transitions ...Transition) *Builder {
+	transitionFn := make(TransitionFn)
+	for _, transition := range transitions {
+		transitionFn[transition.Input] = transition.Target
+	}
+	b.transitions[from] = transitionFn
+	return b
+}
+
+func (b *Builder) Build() *Fsm {
+	return NewFsm(b.transitions, b.initial, b.accepting)
+}

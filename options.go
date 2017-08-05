@@ -3,7 +3,6 @@ package mimime
 import (
 	"errors"
 	"fmt"
-	"github.com/sellleon/mimime/fsm"
 	"strconv"
 	"strings"
 )
@@ -85,7 +84,7 @@ func registerResizeOption(r *requestOptions, arg string) error {
 		var height int64
 		var err error
 
-		parseFsm := fsm.Initialize(parseTransitions, startState, acceptingParseStates)
+		parseFsm := newResizeFsm()
 
 		if sizes[0] == "" {
 			parseFsm.Advance(noLeftParseInput)
