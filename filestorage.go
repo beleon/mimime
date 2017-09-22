@@ -44,9 +44,9 @@ func retrieveOriginal(req *request) error {
 	defer unlockFile(req.imgId())
 
 	if !req.reqOpts.setOpts[forceReloadOption] {
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
+		if _, err := os.Stat(path); err == nil {
 			return nil
-		} else if err != nil {
+		} else if !os.IsNotExist(err) {
 			return err
 		}
 	}
