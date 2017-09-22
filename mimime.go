@@ -14,7 +14,7 @@ func RunServer() {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	req, err := parseRequest(r.URL.Path)
+	req, err := parseRequest(r.URL.String())
 	if err != nil {
 		logErr(w, err)
 		return
